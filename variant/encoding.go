@@ -96,6 +96,16 @@ func encodePrimitive(v Value) []byte {
 		buf[0] = makeHeader(BasicPrimitive, byte(PrimitiveTime))
 		binary.LittleEndian.PutUint64(buf[1:], uint64(v.i64))
 		return buf
+	case PrimitiveTimestampNanos:
+		buf := make([]byte, 9)
+		buf[0] = makeHeader(BasicPrimitive, byte(PrimitiveTimestampNanos))
+		binary.LittleEndian.PutUint64(buf[1:], uint64(v.i64))
+		return buf
+	case PrimitiveTimestampNTZNanos:
+		buf := make([]byte, 9)
+		buf[0] = makeHeader(BasicPrimitive, byte(PrimitiveTimestampNTZNanos))
+		binary.LittleEndian.PutUint64(buf[1:], uint64(v.i64))
+		return buf
 	case PrimitiveUUID:
 		buf := make([]byte, 17)
 		buf[0] = makeHeader(BasicPrimitive, byte(PrimitiveUUID))
