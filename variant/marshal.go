@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -61,6 +62,8 @@ func goToVariantReflect(rv reflect.Value) (Value, error) {
 	switch val := iface.(type) {
 	case uuid.UUID:
 		return UUID(val), nil
+	case time.Time:
+		return timeToVariant(val), nil
 	}
 
 	switch rv.Kind() {
@@ -166,6 +169,18 @@ func goStructToObject(rv reflect.Value) (Value, error) {
 		fields = append(fields, Field{Name: name, Value: val})
 	}
 	return MakeObject(fields), nil
+}
+
+// timeToVariant converts a time.Time to a timestamp variant value. The
+// timestamp is stored with time zone (isAdjustedToUTC), which is the natural
+// mapping for time.Time since it represents an instant. Nanosecond precision
+// is used when the value has sub-microsecond components and fits in the
+// nanosecond timestamp range; microsecond precision otherwise.
+func timeToVariant(t time.Time) Value {
+	if t.Nanosecond()%1000 != 0 && t.Year() >= 1678 && t.Year() <= 2261 {
+		return TimestampNanos(t.UnixNano())
+	}
+	return Timestamp(t.UnixMicro())
 }
 
 // fieldName returns the name to use for a struct field, checking variant and

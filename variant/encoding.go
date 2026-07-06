@@ -179,14 +179,14 @@ func encodeObject(b *MetadataBuilder, obj Object) []byte {
 	offsetSzCode := offsetSizeCode(totalValueSize)
 	offsetSz := offsetSize(offsetSzCode)
 
-	// Header: basic_type=2 (object), value_header encodes num_fields, field_id_size, offset_size
-	// Object header byte: bits 0-1 = BasicObject(2), bits 2-3 = field_id_size_minus_one,
-	// bits 4-5 = offset_size_minus_one, bits 6-7 = unused
-	// Then: num_elements (1 byte for small objects, but spec says offset_size bytes)
+	// Header byte layout for objects, per the spec's value encoding grammar
+	// (object_header: is_large << 4 | field_id_size_minus_one << 2 |
+	// field_offset_size_minus_one, shifted left 2 past the basic type):
 	//
-	// Actually the spec says:
-	// value_metadata byte: bits 0-1 = basic_type (2=object), bits 2-3 = field_id_size-1,
-	// bits 4-5 = offset_size-1, bits 6-7 = is_large (0=1-byte num_elements, 1=4-byte)
+	//	bits 0-1: basic_type (2 = object)
+	//	bits 2-3: field_offset_size_minus_one
+	//	bits 4-5: field_id_size_minus_one
+	//	bit 6:    is_large (0 = 1-byte num_elements, 1 = 4-byte)
 	isLarge := byte(0)
 	numElemSize := 1
 	if n > 255 {
@@ -194,7 +194,7 @@ func encodeObject(b *MetadataBuilder, obj Object) []byte {
 		numElemSize = 4
 	}
 
-	header := byte(BasicObject) | (fieldIDSizeCode << 2) | (offsetSzCode << 4) | (isLarge << 6)
+	header := byte(BasicObject) | (offsetSzCode << 2) | (fieldIDSizeCode << 4) | (isLarge << 6)
 
 	// Total size: header(1) + num_elements + field_ids(n*fieldIDSize) + offsets((n+1)*offsetSz) + values
 	totalSize := 1 + numElemSize + n*fieldIDSize + (n+1)*offsetSz + totalValueSize

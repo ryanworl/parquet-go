@@ -410,3 +410,87 @@ func TestPrimitiveTypeWireValues(t *testing.T) {
 		})
 	}
 }
+
+// TestObjectHeaderWireLayout pins the object header byte against the spec's
+// value encoding grammar:
+//
+//	object value_header = is_large << 4 | field_id_size_minus_one << 2 | field_offset_size_minus_one
+//	header = value_header << 2 | basic_type
+//
+// so bits 2-3 of the header hold field_offset_size_minus_one and bits 4-5
+// hold field_id_size_minus_one. The encoder and decoder both had the two
+// swapped, which is invisible to round-trip tests (they agree with each
+// other) but corrupts every object whose encoded field values exceed 255
+// bytes (2-byte offsets with 1-byte field IDs) for any other reader.
+func TestObjectHeaderWireLayout(t *testing.T) {
+	// One field whose value is a 300-byte binary blob: field IDs fit in one
+	// byte, field offsets need two.
+	val := MakeObject([]Field{{Name: "a", Value: Binary(make([]byte, 300))}})
+
+	var b MetadataBuilder
+	encoded := Encode(&b, val)
+	header := encoded[0]
+
+	if got := header & 0x03; got != byte(BasicObject) {
+		t.Errorf("basic_type bits 0-1 = %d, want %d", got, BasicObject)
+	}
+	if got := (header >> 2) & 0x03; got != 1 {
+		t.Errorf("field_offset_size_minus_one bits 2-3 = %d, want 1 (header=0x%02x)", got, header)
+	}
+	if got := (header >> 4) & 0x03; got != 0 {
+		t.Errorf("field_id_size_minus_one bits 4-5 = %d, want 0 (header=0x%02x)", got, header)
+	}
+	if got := (header >> 6) & 0x01; got != 0 {
+		t.Errorf("is_large bit 6 = %d, want 0 (header=0x%02x)", got, header)
+	}
+
+	meta, _ := b.Build()
+	decoded, err := Decode(meta, encoded)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if !decoded.Equal(val) {
+		t.Error("large object did not round-trip")
+	}
+}
+
+// TestMetadataHeaderWireLayout pins the metadata header byte against the
+// spec's metadata encoding grammar:
+//
+//	header = version | sorted_strings << 4 | (offset_size - 1) << 6
+//
+// offset_size_minus_one was previously written at bits 5-6 instead of 6-7,
+// so any dictionary larger than 255 bytes (2-byte offsets) had a header
+// other readers misparse. Like the object header swap above, the encoder
+// and decoder agreed with each other, so round-trips passed and the bug
+// went unnoticed by the original tests.
+func TestMetadataHeaderWireLayout(t *testing.T) {
+	// Two strings totalling 300 bytes force 2-byte offsets; adding them in
+	// descending order keeps the dictionary unsorted.
+	var b MetadataBuilder
+	b.Add(strings.Repeat("b", 200))
+	b.Add(strings.Repeat("a", 100))
+	_, encoded := b.Build()
+	header := encoded[0]
+
+	if got := header & 0x0F; got != 1 {
+		t.Errorf("version bits 0-3 = %d, want 1 (header=0x%02x)", got, header)
+	}
+	if got := (header >> 4) & 0x01; got != 0 {
+		t.Errorf("sorted_strings bit 4 = %d, want 0 (header=0x%02x)", got, header)
+	}
+	if got := (header >> 5) & 0x01; got != 0 {
+		t.Errorf("reserved bit 5 = %d, want 0 (header=0x%02x)", got, header)
+	}
+	if got := (header >> 6) & 0x03; got != 1 {
+		t.Errorf("offset_size_minus_one bits 6-7 = %d, want 1 (header=0x%02x)", got, header)
+	}
+
+	m, err := DecodeMetadata(encoded)
+	if err != nil {
+		t.Fatalf("DecodeMetadata: %v", err)
+	}
+	if len(m.Strings) != 2 || len(m.Strings[0]) != 200 || len(m.Strings[1]) != 100 {
+		t.Errorf("large dictionary did not round-trip: %d strings", len(m.Strings))
+	}
+}
