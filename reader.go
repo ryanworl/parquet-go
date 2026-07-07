@@ -49,6 +49,7 @@ func NewGenericReader[T any](input io.ReaderAt, options ...ReaderOption) *Generi
 			c.Schema = schemaOf(dereference(t), c.SchemaConfig.StructTags...)
 		}
 	}
+	c.Schema = variantAwareReadSchema(c.Schema, f.schema)
 
 	r := &GenericReader[T]{
 		base: Reader{
@@ -83,6 +84,7 @@ func NewGenericRowGroupReader[T any](rowGroup RowGroup, options ...ReaderOption)
 			c.Schema = schemaOf(dereference(t), c.SchemaConfig.StructTags...)
 		}
 	}
+	c.Schema = variantAwareReadSchema(c.Schema, rowGroup.Schema())
 
 	r := &GenericReader[T]{
 		base: Reader{
@@ -289,8 +291,8 @@ func NewReader(input io.ReaderAt, options ...ReaderOption) *Reader {
 	}
 
 	if c.Schema != nil {
-		r.file.schema = c.Schema
-		r.file.rowGroup = convertRowGroupTo(r.file.rowGroup, c.Schema)
+		r.file.schema = variantAwareReadSchema(c.Schema, f.schema)
+		r.file.rowGroup = convertRowGroupTo(r.file.rowGroup, r.file.schema)
 	}
 
 	r.read.init(r.file.schema, r.file.rowGroup)
@@ -423,7 +425,7 @@ func (r *Reader) Read(row any) error {
 }
 
 func (r *Reader) updateReadSchema(rowType reflect.Type) error {
-	schema := schemaOf(rowType)
+	schema := variantAwareReadSchema(schemaOf(rowType), r.file.schema)
 
 	if EqualNodes(schema, r.file.schema) {
 		r.read.init(schema, r.file.rowGroup)

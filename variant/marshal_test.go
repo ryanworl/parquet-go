@@ -264,6 +264,39 @@ func TestMarshalTimeTime(t *testing.T) {
 	}
 }
 
+// TestMarshalByteArray16AsUUID verifies that [16]byte values (and types
+// derived from them, like uuid.UUID) map to the UUID primitive rather than
+// an array of 16 integers, matching the FIXED_LEN_BYTE_ARRAY(16) semantics
+// of shredded UUID columns.
+func TestMarshalByteArray16AsUUID(t *testing.T) {
+	u := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	for name, input := range map[string]any{
+		"uuid.UUID": u,
+		"[16]byte":  [16]byte(u),
+	} {
+		t.Run(name, func(t *testing.T) {
+			meta, val, err := Marshal(input)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			m, err := DecodeMetadata(meta)
+			if err != nil {
+				t.Fatalf("DecodeMetadata: %v", err)
+			}
+			decoded, err := Decode(m, val)
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			if decoded.Type() != PrimitiveUUID {
+				t.Fatalf("primitive type = %d, want %d (UUID)", decoded.Type(), PrimitiveUUID)
+			}
+			if decoded.UUIDValue() != u {
+				t.Errorf("UUID value = %v, want %v", decoded.UUIDValue(), u)
+			}
+		})
+	}
+}
+
 func TestMarshalNested(t *testing.T) {
 	input := map[string]any{
 		"outer": map[string]any{

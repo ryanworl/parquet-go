@@ -23,6 +23,13 @@ func Marshal(v any) (metadata, value []byte, err error) {
 	return metadataBytes, valueBytes, nil
 }
 
+// ValueOf converts a Go value to a variant Value without encoding it. It is
+// useful for callers that need to inspect or partially encode the value,
+// such as shredded variant writers.
+func ValueOf(v any) (Value, error) {
+	return goToVariant(v)
+}
+
 // Unmarshal decodes variant binary data into a Go value.
 func Unmarshal(metadata, value []byte) (any, error) {
 	m, err := DecodeMetadata(metadata)
@@ -102,9 +109,11 @@ func goToVariantReflect(rv reflect.Value) (Value, error) {
 		}
 		return goSliceToArray(rv)
 	case reflect.Array:
-		if rv.Type() == reflect.TypeFor[uuid.UUID]() {
+		// [16]byte arrays (including uuid.UUID and types derived from it)
+		// map to the UUID primitive.
+		if rv.Type().Elem().Kind() == reflect.Uint8 && rv.Len() == 16 {
 			var u uuid.UUID
-			reflect.ValueOf(&u).Elem().Set(rv)
+			reflect.Copy(reflect.ValueOf(&u).Elem(), rv)
 			return UUID(u), nil
 		}
 		return goSliceToArray(rv)
