@@ -479,9 +479,11 @@ func (e *encoder) encodeReflect(rv reflect.Value) (start, end int, err error) {
 		}
 		return e.encodeSliceArray(rv)
 	case reflect.Array:
-		if rv.Type() == reflect.TypeFor[uuid.UUID]() {
+		// [16]byte arrays (including uuid.UUID and types derived from it)
+		// map to the UUID primitive.
+		if rv.Type().Elem().Kind() == reflect.Uint8 && rv.Len() == 16 {
 			var u uuid.UUID
-			reflect.ValueOf(&u).Elem().Set(rv)
+			reflect.Copy(reflect.ValueOf(&u).Elem(), rv)
 			start, end = e.encodeValuePrimitive(UUID(u))
 			return start, end, nil
 		}
